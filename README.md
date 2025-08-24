@@ -4,7 +4,7 @@ Python real-time speech-to-text translation overlay for Windows. Speak, see your
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 **No Python or libraries needed if you use the `.exe`!**
 
@@ -51,7 +51,7 @@ docker run -d -p 5000:5000 -e LT_LOAD_ONLY="en,pl,de,fr,es,it,ru,nl,cs,pt" --nam
 
 ---
 
-## ✨ Features
+##  Features
 
 - **Speech-to-text** (Google Speech Web API)
 - **Local translation** (LibreTranslate via Docker, accurate & fast)
@@ -62,7 +62,7 @@ docker run -d -p 5000:5000 -e LT_LOAD_ONLY="en,pl,de,fr,es,it,ru,nl,cs,pt" --nam
 
 ---
 
-## 🖼️ Screenshots
+## Screenshots
 
 <p align="center">
   <img src="screenshots/overlay.png" alt="Overlay" />
@@ -74,7 +74,7 @@ docker run -d -p 5000:5000 -e LT_LOAD_ONLY="en,pl,de,fr,es,it,ru,nl,cs,pt" --nam
 
 ---
 
-## ⚙️ Requirements
+## Requirements
 
 - Windows 10/11 (tested on Windows 11)
 - Minimum 16 GB RAM. Recommended 32 GB RAM
@@ -85,7 +85,7 @@ docker run -d -p 5000:5000 -e LT_LOAD_ONLY="en,pl,de,fr,es,it,ru,nl,cs,pt" --nam
 
 ---
 
-## 🛠️ Usage
+## Usage
 
 - **Start Docker & LibreTranslate.**
 - When you launch the app the settings window will appear automatically by default.
@@ -95,7 +95,7 @@ docker run -d -p 5000:5000 -e LT_LOAD_ONLY="en,pl,de,fr,es,it,ru,nl,cs,pt" --nam
 
 ---
 
-## 📝 Configuration
+## Configuration
 
 - All settings are saved in `settings.json`:
     - Windows: `%APPDATA%\TranslatorOverlay\settings.json`
@@ -103,7 +103,7 @@ docker run -d -p 5000:5000 -e LT_LOAD_ONLY="en,pl,de,fr,es,it,ru,nl,cs,pt" --nam
 
 ---
 
-## 🛠️ Troubleshooting
+## Troubleshooting
 
 - **LibreTranslate error?**  
   Make sure Docker is running and the container is started. Check the server URL.
@@ -122,6 +122,6 @@ docker run -d -p 5000:5000 -e LT_LOAD_ONLY="en,pl,de,fr,es,it,ru,nl,cs,pt" --nam
   
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License click [LICENSE](LICENSE) to view the full license text.
