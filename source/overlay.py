@@ -2,7 +2,6 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 import sys
 import time 
 
-# Winapi (pywin32)click-through
 try:
     import win32api
     import win32con
@@ -12,7 +11,7 @@ except ImportError:
     print("WARNING: pywin32 modules are not installed. 'Click-through' feature will not work.")
     print("To install: pip install pywin32")
 
-from constants import OVERLAY_POSITIONS
+from modules import OVERLAY_POSITIONS
 
 
 class OverlayWindow(QtWidgets.QWidget):

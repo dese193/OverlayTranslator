@@ -2,7 +2,7 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 import keyboard
 from copy import deepcopy
 
-from constants import (
+from modules import (
     APP_VERSION,
     DEFAULT_CONFIG_STRUCT,
     OVERLAY_POSITIONS, 
@@ -261,7 +261,7 @@ class SettingsWindow(QtWidgets.QWidget):
         
         engine_layout = QtWidgets.QHBoxLayout()
         engine_label = QtWidgets.QLabel("Speech recognition engine:")
-        self.engine_display = QtWidgets.QLabel("Google (online)")
+        self.engine_display = QtWidgets.QLabel("Google (Online)")
         self.engine_display.setStyleSheet("""
             QLabel {
                 background-color: #f0f0f0;
@@ -488,36 +488,113 @@ class SettingsWindow(QtWidgets.QWidget):
             self.save_config_func()
 
     def reset_to_defaults(self):
-        self.current_config_ref.clear()
-        self.current_config_ref.update(deepcopy(DEFAULT_CONFIG_STRUCT))
-        self.current_config_ref["silence_timeout"] = 0.20
-        self.save_config_func()
-        self.libre_url_edit.setText(self.current_config_ref.get("libretranslate_url", "http://localhost:5000/translate"))
-        source_code = self.current_config_ref.get("source_language", list(SOURCE_LANGUAGES.keys())[0])
-        for i, (code, _) in enumerate(SOURCE_LANGUAGES.items()):
-            if code == source_code:
-                self.source_lang_combo.setCurrentIndex(i)
-                break
+        defaults = deepcopy(DEFAULT_CONFIG_STRUCT)
 
-        target_code = self.current_config_ref.get("target_language", list(TARGET_LANGUAGES.keys())[0])
-        for i, (code, _) in enumerate(TARGET_LANGUAGES.items()):
-            if code == target_code:
-                self.target_lang_combo.setCurrentIndex(i)
-                break
+        prev_config = deepcopy(self.current_config_ref)
+        changed_keys = []
+        for k, v in defaults.items():
+            if prev_config.get(k) != v:
+                changed_keys.append(k)
 
-        pos_code = self.current_config_ref.get("overlay_position", list(OVERLAY_POSITIONS.keys())[0])
-        for i, (code, _) in enumerate(OVERLAY_POSITIONS.items()):
-            if code == pos_code:
-                self.pos_combo.setCurrentIndex(i)
-                break
+        suppress_prev = getattr(self.tray_app, '_suppress_tray_messages', False)
+        try:
+            setattr(self.tray_app, '_suppress_tray_messages', True)
 
-        self.display_time_spinbox.setValue(self.current_config_ref.get("overlay_display_time", 15))
-        self.phrase_time_spinbox.setValue(self.current_config_ref.get("phrase_time_limit", 30))
-        
-        initial_silence_val = int(round(self.current_config_ref.get("initial_silence_timeout", 1.5) * 10))
-        self.initial_silence_slider.setValue(initial_silence_val)
-        self.initial_silence_value_label.setText(f"{self.initial_silence_slider.value()/10:.1f} s")
-        QtWidgets.QMessageBox.information(self, "Defaults restored", "Settings have been reset to defaults.")
+            try:
+                self.current_config_ref.clear()
+                self.current_config_ref.update(defaults)
+            except Exception:
+                self.current_config_ref = defaults
+
+            try:
+                self.hotkey_edit.setText(self.current_config_ref.get("hotkey_translate", DEFAULT_CONFIG_STRUCT["hotkey_translate"]))
+                self.copy_hotkey_edit.setText(self.current_config_ref.get("hotkey_copy", DEFAULT_CONFIG_STRUCT["hotkey_copy"]))
+
+                desired_pos = self.current_config_ref.get("overlay_position", DEFAULT_CONFIG_STRUCT["overlay_position"]) 
+                for i in range(self.pos_combo.count()):
+                    if self.pos_combo.itemData(i) == desired_pos:
+                        self.pos_combo.setCurrentIndex(i)
+                        break
+
+                self.display_time_spinbox.setValue(int(self.current_config_ref.get("overlay_display_time", DEFAULT_CONFIG_STRUCT["overlay_display_time"])))
+                self.phrase_time_spinbox.setValue(int(self.current_config_ref.get("phrase_time_limit", DEFAULT_CONFIG_STRUCT["phrase_time_limit"])))
+                init_val = int(round(self.current_config_ref.get("initial_silence_timeout", DEFAULT_CONFIG_STRUCT.get("initial_silence_timeout", 4.0)) * 10))
+                self.initial_silence_slider.setValue(init_val)
+                try:
+                    self.initial_silence_value_label.setText(f"{self.initial_silence_slider.value()/10:.1f} s")
+                except Exception:
+                    pass
+
+                try:
+                    self.libre_url_edit.setText(self.current_config_ref.get("libretranslate_url", DEFAULT_CONFIG_STRUCT.get("libretranslate_url", "http://localhost:5000/translate")))
+                except Exception:
+                    pass
+
+                src = self.current_config_ref.get("source_language")
+                for i in range(self.source_lang_combo.count()):
+                    if self.source_lang_combo.itemData(i) == src:
+                        self.source_lang_combo.setCurrentIndex(i)
+                        break
+                tgt = self.current_config_ref.get("target_language")
+                for i in range(self.target_lang_combo.count()):
+                    if self.target_lang_combo.itemData(i) == tgt:
+                        self.target_lang_combo.setCurrentIndex(i)
+                        break
+            except Exception:
+                pass
+
+            try:
+                self.register_hotkey_translation_func(self.current_config_ref.get("hotkey_translate"))
+            except Exception:
+                pass
+            try:
+                self.register_hotkey_copy_func(self.current_config_ref.get("hotkey_copy"))
+            except Exception:
+                pass
+
+            try:
+                if hasattr(self.tray_app, 'overlay_window') and self.tray_app.overlay_window:
+                    self.tray_app.overlay_window.update_settings_from_config(self.current_config_ref)
+                    if hasattr(self.tray_app, 'change_position'):
+                        self.tray_app.change_position(self.current_config_ref.get("overlay_position"))
+            except Exception:
+                pass
+
+            try:
+                self.save_config_func()
+            except Exception:
+                pass
+        finally:
+            setattr(self.tray_app, '_suppress_tray_messages', suppress_prev)
+
+        if changed_keys:
+            friendly_names = {
+                'hotkey_translate': 'Translation hotkey',
+                'hotkey_copy': 'Copy hotkey',
+                'overlay_position': 'Overlay position',
+                'target_language': 'Target language',
+                'source_language': 'Source language',
+                'overlay_display_time': 'Overlay display time',
+                'phrase_time_limit': 'Max recording time',
+                'libretranslate_url': 'LibreTranslate URL',
+            }
+            items = [friendly_names.get(k, k) for k in changed_keys]
+            if len(items) > 6:
+                items = items[:6] + ['…']
+            summary = 'Defaults applied: ' + ', '.join(items)
+        else:
+            summary = 'Defaults applied (no changes needed).'
+
+        try:
+            if hasattr(self.tray_app, 'tray_icon') and self.tray_app.tray_icon:
+                self.tray_app.tray_icon.showMessage('OverlayTranslator', summary, QtWidgets.QSystemTrayIcon.MessageIcon.Information, 3500)
+        except Exception:
+            try:
+                QtWidgets.QMessageBox.information(self, 'Defaults applied', summary)
+            except Exception:
+                pass
+
+
 
     def exit_application(self):
         """Completely closes the application after user confirmation"""

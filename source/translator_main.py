@@ -11,7 +11,7 @@ import time
 import requests
 
 
-from constants import (
+from modules import (
     APP_NAME, APP_VERSION,
     DEFAULT_CONFIG_STRUCT,
     OVERLAY_POSITIONS, TARGET_LANGUAGES, TRANSLATOR_ENGINES,
@@ -35,6 +35,7 @@ except ImportError:
 
 from gui import SettingsWindow, HotkeyDialog
 from overlay import OverlayWindow
+from trayapp import SystemTrayApp
 
 current_config = deepcopy(DEFAULT_CONFIG_STRUCT)
 active_hotkey = current_config["hotkey_translate"]
@@ -62,175 +63,56 @@ def get_config_dir():
         try:
             path.mkdir(parents=True, exist_ok=True)
         except OSError as e_fallback:
-            print(f"CRITICAL ERROR: Cannot create config folder: {e_fallback}")
+            print(f"WARNING: Cannot create fallback config folder {path}: {e_fallback}")
             return None
     return path
 
+
 CONFIG_DIR = get_config_dir()
 CONFIG_FILE_PATH = CONFIG_DIR / "settings.json" if CONFIG_DIR else None
+
 
 def load_config():
     global current_config, active_hotkey, active_copy_hotkey
     if CONFIG_FILE_PATH and CONFIG_FILE_PATH.exists():
         try:
-            with open(CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
-                loaded_values = json.load(f)
-                valid_config = deepcopy(DEFAULT_CONFIG_STRUCT)
-                for key in valid_config:
-                    if key in loaded_values:
-                        valid_config[key] = loaded_values[key]
-                if "initial_silence_timeout" not in valid_config or not isinstance(valid_config["initial_silence_timeout"], (float, int)):
-                    valid_config["initial_silence_timeout"] = DEFAULT_INITIAL_SILENCE_TIMEOUT
-                else:
-                    valid_config["initial_silence_timeout"] = float(valid_config["initial_silence_timeout"])
-                # silence_timeout
-                valid_config["silence_timeout"] = 0.20
-                current_config = valid_config
-                if current_config.get("overlay_position") not in OVERLAY_POSITIONS:
-                    current_config["overlay_position"] = DEFAULT_OVERLAY_POSITION
-        except json.JSONDecodeError:
-            print(f"[Config] Error: Config file {CONFIG_FILE_PATH} is corrupted. Using default settings.")
+            with open(CONFIG_FILE_PATH, 'r', encoding='utf-8') as f:
+                cfg = json.load(f)
+            if isinstance(cfg, dict):
+                current_config = deepcopy(DEFAULT_CONFIG_STRUCT)
+                current_config.update(cfg)
+            else:
+                print("[Config] Invalid config format, using defaults.")
+                current_config = deepcopy(DEFAULT_CONFIG_STRUCT)
         except Exception as e:
-            print(f"[Config] Unexpected error while loading config: {e}. Using default settings.")
+            print(f"[Config] Error loading config: {e}")
+            current_config = deepcopy(DEFAULT_CONFIG_STRUCT)
     else:
-        print("[Config] Using default settings (config file does not exist or an error occurred).")
         current_config = deepcopy(DEFAULT_CONFIG_STRUCT)
-    if "initial_silence_timeout" not in current_config or not isinstance(current_config["initial_silence_timeout"], (float, int)):
+
+    try:
+        current_config["initial_silence_timeout"] = float(current_config.get("initial_silence_timeout", DEFAULT_INITIAL_SILENCE_TIMEOUT))
+    except Exception:
         current_config["initial_silence_timeout"] = DEFAULT_INITIAL_SILENCE_TIMEOUT
-    else:
-        current_config["initial_silence_timeout"] = float(current_config["initial_silence_timeout"])
-    # silence_timeout
-    current_config["silence_timeout"] = 0.20
-    active_hotkey = current_config["hotkey_translate"]
-    active_copy_hotkey = current_config["hotkey_copy"]
+    try:
+        current_config["silence_timeout"] = float(current_config.get("silence_timeout", DEFAULT_SILENCE_TIMEOUT))
+    except Exception:
+        current_config["silence_timeout"] = DEFAULT_SILENCE_TIMEOUT
+
+    active_hotkey = current_config.get("hotkey_translate", DEFAULT_HOTKEY)
+    active_copy_hotkey = current_config.get("hotkey_copy", DEFAULT_COPY_HOTKEY)
+
 
 def save_config():
     global current_config
-    if "initial_silence_timeout" not in current_config or not isinstance(current_config["initial_silence_timeout"], (float, int)):
-        current_config["initial_silence_timeout"] = DEFAULT_INITIAL_SILENCE_TIMEOUT
-    else:
-        current_config["initial_silence_timeout"] = float(current_config["initial_silence_timeout"])
-    # silence_timeout
-    current_config["silence_timeout"] = 0.20
     if CONFIG_FILE_PATH:
         try:
-            with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
-                json.dump(current_config, f, ensure_ascii=False, indent=2)
+            with open(CONFIG_FILE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(current_config, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            print(f"[Config] Error while saving config: {e}")
+            print(f"[Config] Error saving config: {e}")
     else:
         print("[Config] WARNING: Cannot save configuration, file path is not available.")
-
-
-class SystemTrayApp:
-    def __init__(self, app_instance, overlay_window_instance):
-        self.app = app_instance
-        self.overlay_window = overlay_window_instance
-        self.tray_icon = QtWidgets.QSystemTrayIcon(self.app)
-        self.debug_console_window = None
-
-        # tray
-        if getattr(sys, 'frozen', False):
-            base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.abspath(".")
-        else:
-            base_path = os.path.dirname(__file__)
-        icon_path = os.path.join(base_path, "pythonicon.ico")
-        if os.path.exists(icon_path):
-            icon = QtGui.QIcon(icon_path)
-            print(f"[Icon] Loaded custom icon from: {icon_path}")
-        else:
-            print(f"[Icon] WARNING: Icon file '{icon_path}' not found. Using default system icon.")
-            icon = self.app.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_ComputerIcon)
-        self.tray_icon.setIcon(icon)
-
-        self.menu = QtWidgets.QMenu()
-
-        # settings panel
-        settings_action = QtGui.QAction("Open Settings", self.app)
-        settings_action.triggered.connect(self.show_settings_window)
-        self.menu.addAction(settings_action)
-        self.menu.addSeparator()
-
-        exit_action = QtGui.QAction("Exit", self.app)
-        exit_action.triggered.connect(self.quit_app)
-        self.menu.addAction(exit_action)
-
-        self.tray_icon.setContextMenu(self.menu)
-        self.tray_icon.show()
-        self.settings_window = None
-
-    def change_position(self, position_key):
-        global current_config
-        old_position = current_config["overlay_position"]
-        if old_position != position_key:
-            self.overlay_window.reposition_overlay(position_key, is_test_display=True)
-            current_config["overlay_position"] = position_key
-            save_config()
-            self.tray_icon.showMessage("OverlayTranslator", f"Position changed to: {OVERLAY_POSITIONS.get(position_key, 'Unknown')}", self.tray_icon.icon(), 2000)
-        else:
-            pass
-
-    def show_settings_window(self):
-        if self.settings_window is None:
-            self.settings_window = SettingsWindow(self, current_config,
-                                                  self.register_hotkey_translation_internal,
-                                                  self.register_hotkey_copy_internal,
-                                                  save_config,
-                                                  APP_VERSION,
-                                                  )
-        self.settings_window.show()
-        self.settings_window.raise_()
-        self.settings_window.activateWindow()
-
-    def register_hotkey_translation_internal(self, new_hotkey_str):
-        global active_hotkey
-        try:
-            register_hotkey_translation(new_hotkey_str, self.overlay_window)
-            current_config["hotkey_translate"] = new_hotkey_str
-            active_hotkey = new_hotkey_str
-            save_config()
-            self.tray_icon.showMessage("OverlayTranslator", f"Translation hotkey changed to: {new_hotkey_str.upper()}", self.tray_icon.icon(), 2000)
-            return True
-        except (ValueError, KeyError) as e:
-            print(f"[Hotkey] Error while changing translation hotkey: {e}")
-            QtWidgets.QMessageBox.warning(self.overlay_window, "Hotkey Change Error",
-                f"Failed to set shortcut '{new_hotkey_str.upper()}'.\nError: {e}\n\n"
-                f"Previous shortcut '{active_hotkey.upper()}' remains active.")
-            try: register_hotkey_translation(active_hotkey, self.overlay_window)
-            except Exception as e_restore:
-                print(f"[Hotkey] CRITICAL ERROR while trying to restore old translation hotkey: {e_restore}")
-                QtWidgets.QMessageBox.critical(self.overlay_window, "Critical Error", f"Failed to restore previous hotkey! {e_restore}")
-            return False
-
-    def register_hotkey_copy_internal(self, new_hotkey_str):
-        global active_copy_hotkey
-        try:
-            register_hotkey_copy(new_hotkey_str, self.overlay_window)
-            current_config["hotkey_copy"] = new_hotkey_str
-            active_copy_hotkey = new_hotkey_str
-            save_config()
-            self.tray_icon.showMessage("OverlayTranslator", f"Copy hotkey changed to: {new_hotkey_str.upper()}", self.tray_icon.icon(), 2000)
-            return True
-        except (ValueError, KeyError) as e:
-            print(f"[Hotkey] Error while changing copy hotkey: {e}")
-            QtWidgets.QMessageBox.warning(self.overlay_window, "Hotkey Change Error",
-                f"Failed to set shortcut '{new_hotkey_str.upper()}'.\nError: {e}\n\n"
-                f"Previous shortcut '{active_copy_hotkey.upper()}' remains active.")
-            try:
-                register_hotkey_copy(active_copy_hotkey, self.overlay_window)
-            except Exception as e_restore:
-                print(f"[Hotkey] CRITICAL ERROR while trying to restore old copy hotkey: {e_restore}")
-                QtWidgets.QMessageBox.critical(self.overlay_window, "Critical Error", f"Failed to restore previous hotkey! {e_restore}")
-            return False
-
-    def quit_app(self):
-        print("[App] Closing application...")
-        save_config()
-        keyboard.unhook_all()
-        if hasattr(self, 'debug_console_window') and self.debug_console_window:
-            self.debug_console_window.close()
-        self.tray_icon.hide()
-        QtCore.QCoreApplication.quit()
 
 recognizer = sr.Recognizer()
 
@@ -499,7 +381,15 @@ def main():
                                        f"Failed to register initial copy hotkey: '{active_copy_hotkey}'.\n"
                                        "Ensure the shortcut is not already in use by another program.\n"
                                        "The application will start, but the copy hotkey may not work.")
-    tray_app = SystemTrayApp(app, overlay_window)
+    tray_app = SystemTrayApp(
+        app_instance=app,
+        overlay_window_instance=overlay_window,
+        current_config_ref=current_config,
+        register_hotkey_translation_func=register_hotkey_translation,
+        register_hotkey_copy_func=register_hotkey_copy,
+        save_config_func=save_config,
+        app_version_ref=APP_VERSION
+    )
     tray_app.show_settings_window() 
     sys.exit(app.exec())
 
